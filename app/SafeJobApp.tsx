@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, KeyboardEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 
 type Job = {
   id: string; title: string; company: string; role: "health" | "safety" | "both";
@@ -9,6 +9,24 @@ type Job = {
   posted: string; deadline: string; source: string; summary: string;
   responsibilities: string[]; requirements: string[]; isNew?: boolean; isUrgent?: boolean;
 };
+
+type KakaoMapPosition = object;
+type KakaoMapsApi = {
+  load: (callback: () => void) => void;
+  LatLng: new (latitude: number, longitude: number) => KakaoMapPosition;
+  Map: new (container: HTMLElement, options: { center: KakaoMapPosition; level: number }) => object;
+  Marker: new (options: { map: object; position: KakaoMapPosition }) => object;
+  services: {
+    Geocoder: new () => {
+      addressSearch: (address: string, callback: (result: Array<{ x: string; y: string }>, status: string) => void) => void;
+    };
+    Status: { OK: string };
+  };
+};
+
+const KAKAO_MAP_KEY=process.env.NEXT_PUBLIC_KAKAO_MAP_JAVASCRIPT_KEY?.trim();
+const KAKAO_MAP_ADDRESS="충남 천안시 서북구 광장로 215";
+const KAKAO_MAP_SCRIPT_ID="kakao-map-sdk";
 
 const jobs: Job[] = [];
 
@@ -64,9 +82,60 @@ export default function SafeJobApp() {
       </div></div></section>
 
     <section className="shell source-note" id="about"><div className="source-icon" aria-hidden="true">✓</div><div><span className="eyebrow blue">신뢰할 수 있는 채용정보</span><h2>승인된 출처만 정확하게 연결합니다.</h2><p>사람인·잡코리아 공식 API 승인 후 매일 0시와 12시에 갱신하고, 모든 공고에 원문 링크를 표시할 예정입니다.</p></div><div className="source-points"><p><b>2회</b><span>하루 갱신 예정</span></p><p><b>100%</b><span>원문 링크 원칙</span></p></div></section>
-    <section className="shell location-section" id="location"><div className="location-heading"><span className="eyebrow blue">찾아오시는 길</span><h2>안전보건공단 충남지역본부</h2><p>천안 지역 산업안전보건 관련 상담과 지원을 받을 수 있는 안전보건공단 지역본부입니다.</p></div><div className="location-map-card"><a className="location-map-image" href="https://place.map.kakao.com/22988003" target="_blank" rel="noreferrer" aria-label="카카오맵에서 안전보건공단 충남지역본부 보기"><img src="https://staticmap.kakao.com/map/mapservice?FORMAT=PNG&SCALE=2.5&MX=524205&MY=916535&S=0&IW=504&IH=310&LANG=0&COORDSTM=WCONGNAMUL&logo=kakao_logo" width="504" height="310" alt="안전보건공단 충남지역본부 카카오맵"/></a><div className="location-map-caption"><div><span>주소</span><address>충남 천안시 서북구 광장로 215<br/>충남경제종합지원센터 3층</address></div><a href="https://place.map.kakao.com/22988003" target="_blank" rel="noreferrer">카카오맵에서 크게 보기 <span aria-hidden="true">↗</span></a></div></div></section>
+    <section className="shell location-section" id="location"><div className="location-heading"><span className="eyebrow blue">찾아오시는 길</span><h2>안전보건공단 충남지역본부</h2><p>천안 지역 산업안전보건 관련 상담과 지원을 받을 수 있는 안전보건공단 지역본부입니다.</p></div><div className="location-map-card"><KakaoMap/><div className="location-map-caption"><div><span>주소</span><address>충남 천안시 서북구 광장로 215<br/>충남경제종합지원센터 3층</address></div><a href="https://place.map.kakao.com/22988003" target="_blank" rel="noreferrer">카카오맵에서 크게 보기 <span aria-hidden="true">↗</span></a></div></div></section>
     <footer><div className="shell footer-grid"><div><a className="brand" href="#top"><span className="brand-mark">S</span><span>세이프잡</span></a><p>보건·안전 전문가의 더 나은 선택을 돕습니다.</p></div><div><strong>서비스</strong><a href="#jobs">채용공고</a><button type="button" onClick={openSaved}>저장한 공고</button></div><div><strong>안내</strong><a href="#about">서비스 소개</a><a href="#about">데이터 출처</a></div><div><strong>고객지원</strong><a href="mailto:hello@safejob.kr">정보 오류 신고</a><a href="mailto:hello@safejob.kr">문의하기</a></div></div><div className="shell footer-bottom"><span>© 2026 SafeJob. All rights reserved.</span><span>공고의 최종 정보는 원문에서 확인해 주세요.</span></div></footer>
     {selectedJob&&<JobDialog job={selectedJob} saved={saved.includes(selectedJob.id)} onSave={()=>toggleSaved(selectedJob.id)} onClose={()=>setSelectedJob(null)}/>} </main>;
+}
+
+function KakaoMap() {
+  const mapRef=useRef<HTMLDivElement|null>(null);
+  const [status,setStatus]=useState<"loading"|"ready"|"fallback">(KAKAO_MAP_KEY?"loading":"fallback");
+
+  useEffect(()=>{
+    if(!KAKAO_MAP_KEY)return;
+
+    let cancelled=false;
+    const kakaoWindow=window as typeof window&{kakao?:{maps:KakaoMapsApi}};
+    const showFallback=()=>{ if(!cancelled)setStatus("fallback"); };
+    const initializeMap=()=>{
+      const maps=kakaoWindow.kakao?.maps;
+      if(!maps||!mapRef.current){ showFallback(); return; }
+      maps.load(()=>{
+        if(cancelled||!mapRef.current)return;
+        const geocoder=new maps.services.Geocoder();
+        geocoder.addressSearch(KAKAO_MAP_ADDRESS,(result,geocoderStatus)=>{
+          if(cancelled||!mapRef.current)return;
+          if(geocoderStatus!==maps.services.Status.OK||!result[0]){ showFallback(); return; }
+          const center=new maps.LatLng(Number(result[0].y),Number(result[0].x));
+          const map=new maps.Map(mapRef.current,{center,level:3});
+          new maps.Marker({map,position:center});
+          setStatus("ready");
+        });
+      });
+    };
+
+    if(kakaoWindow.kakao?.maps){ initializeMap(); return()=>{cancelled=true;}; }
+
+    let script=document.getElementById(KAKAO_MAP_SCRIPT_ID) as HTMLScriptElement|null;
+    let shouldAppend=false;
+    if(!script){
+      script=document.createElement("script");
+      script.id=KAKAO_MAP_SCRIPT_ID;
+      script.async=true;
+      script.src=`https://dapi.kakao.com/v2/maps/sdk.js?appkey=${encodeURIComponent(KAKAO_MAP_KEY)}&autoload=false&libraries=services`;
+      shouldAppend=true;
+    }
+    script.addEventListener("load",initializeMap,{once:true});
+    script.addEventListener("error",showFallback,{once:true});
+    if(shouldAppend)document.head.appendChild(script);
+    return()=>{
+      cancelled=true;
+      script?.removeEventListener("load",initializeMap);
+      script?.removeEventListener("error",showFallback);
+    };
+  },[]);
+
+  return <div className={`kakao-map-shell ${status==="ready"?"is-ready":""}`}><div ref={mapRef} className="kakao-map-canvas" aria-label="안전보건공단 충남지역본부 위치 지도"/>{status!=="ready"&&<a className="location-map-image" href="https://place.map.kakao.com/22988003" target="_blank" rel="noreferrer" aria-label="카카오맵에서 안전보건공단 충남지역본부 보기"><img src="https://staticmap.kakao.com/map/mapservice?FORMAT=PNG&SCALE=2.5&MX=524205&MY=916535&S=0&IW=504&IH=310&LANG=0&COORDSTM=WCONGNAMUL&logo=kakao_logo" width="504" height="310" alt="안전보건공단 충남지역본부 카카오맵"/></a>}{status==="loading"&&<span className="map-loading" role="status">지도를 불러오는 중…</span>}</div>;
 }
 
 function FilterGroup({label,value,options,onChange}:{label:string;value:string;options:string[];onChange:(value:string)=>void}) { return <fieldset className="filter-group"><legend>{label}</legend>{options.map((option)=><label key={option}><input type="radio" name={label} checked={value===option} onChange={()=>onChange(option)}/><span>{option}</span></label>)}</fieldset>; }

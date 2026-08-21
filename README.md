@@ -16,6 +16,20 @@ npm run dev
 npm run build
 ```
 
+## 카카오 지도 API 키 실습
+
+1. [카카오 Developers](https://developers.kakao.com/)에서 앱을 만들고 **JavaScript 키**를 확인합니다.
+2. 앱 설정의 JavaScript SDK 도메인에 `http://localhost:3000`을 등록합니다.
+3. 프로젝트 루트에서 `.env.example`을 복사해 `.env.local`을 만들고 키를 입력합니다.
+
+```env
+NEXT_PUBLIC_KAKAO_MAP_JAVASCRIPT_KEY=발급받은_JavaScript_키
+```
+
+4. `npm run dev:vercel`을 다시 실행합니다. Vercel에서는 같은 이름의 환경 변수를 프로젝트 설정에 추가하고 재배포합니다.
+
+키가 없거나 지도 로딩에 실패하면 정적 카카오 지도가 대신 표시됩니다. `.env.local`은 Git에 올리지 않습니다.
+
 This starter does not use `wrangler.jsonc`.
 
 ## Included Shape
